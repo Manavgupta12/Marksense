@@ -20,13 +20,13 @@ It helps track daily performance, visualize results, highlight toppers, and make
 ## 📸 Screenshots  
 
 ### Home Page  
-![Home Screenshot](assets/home.png)  
+<img src="Assets/Home.png" alt="Home Screenshot" width="500"/>
 
 ### Visualizer  
-![Visualizer Screenshot](assets/visualizer.png)  
+<img src="Assets/Visualizer.png" alt="Visualizer Screenshot" width="500"/>
 
 ### Progress Tracker  
-![Progress Screenshot](assets/progress.png)  
+<img src="Assets/Progress.png" alt="Progress Screenshot" width="500"/> 
 
 ---
 
