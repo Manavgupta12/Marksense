@@ -3,7 +3,7 @@ name: Keep Streamlit Awake
 on:
   schedule:
     - cron: "*/15 * * * *"   # Runs every 15 minutes
-  workflow_dispatch:          # Allows manual trigger too
+  workflow_dispatch:          # Allows manual trigger
 
 jobs:
   ping:
@@ -11,4 +11,9 @@ jobs:
     steps:
       - name: Ping Streamlit App
         run: |
-          curl -L -s https://marksense.streamlit.app > /dev/null
+          STATUS=$(curl -L -s -o /dev/null -w "%{http_code}" https://marksense.streamlit.app/)
+          echo "HTTP status code: $STATUS"
+          if [ "$STATUS" -ge 400 ]; then
+            echo "App is down!"
+            exit 1
+          fi
