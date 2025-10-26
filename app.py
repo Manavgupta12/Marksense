@@ -5,7 +5,7 @@ import datetime
 
 # Google Sheets libs
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+from google.oauth2.service_account import Credentials
 
 # ------------------------------
 # Config
@@ -22,37 +22,39 @@ subjects = ["Maths", "Science", "English", "History", "Computer"]
 def connect_sheets():
     """Return gspread sheet object or None if connection fails."""
     try:
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        
-        # Check if running on Streamlit Cloud (has secrets)
-        if hasattr(st, 'secrets') and 'gcp_service_account' in st.secrets:
-            # Use Streamlit Cloud secrets
-            creds = ServiceAccountCredentials.from_json_keyfile_dict(
-                dict(st.secrets["gcp_service_account"]), scope
-            )
-        elif os.path.exists(SERVICE_ACCOUNT_FILE):
-            # Use local JSON file for development
-            creds = ServiceAccountCredentials.from_json_keyfile_name(SERVICE_ACCOUNT_FILE, scope)
+        scope = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive",
+        ]
+
+        # Streamlit Cloud: load from secrets
+        if "gcp_service_account" in st.secrets:
+            creds_dict = st.secrets["gcp_service_account"]
+            creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
+
+        # Local dev: load from JSON
+        elif os.path.exists("service_account.json"):
+            creds = Credentials.from_service_account_file("service_account.json", scopes=scope)
+
         else:
-            st.error("⚠️ Google Sheets credentials not found! Please set up secrets or add service_account.json")
+            st.error("⚠️ Google Sheets credentials not found! Add JSON locally or use Streamlit secrets.")
             return None
-        
+
         client = gspread.authorize(creds)
         sheet = client.open(GSHEET_NAME).sheet1
         return sheet
+
     except Exception as e:
-        st.warning("Google Sheets connection failed. Reason: " + str(e))
+        st.warning(f"Google Sheets connection failed: {e}")
         return None
 
 def read_history_from_sheet(sheet):
-    """Return a DataFrame read from the sheet, or an empty DataFrame with expected columns."""
     try:
         data = sheet.get_all_records()
         if not data:
             cols = ["Date", "Name"] + subjects + ["Total", "Average", "Rank"]
             return pd.DataFrame(columns=cols)
         df = pd.DataFrame(data)
-        # Ensure expected columns exist
         for c in ["Date", "Name"] + subjects + ["Total", "Average", "Rank"]:
             if c not in df.columns:
                 df[c] = None
@@ -62,7 +64,6 @@ def read_history_from_sheet(sheet):
         return pd.DataFrame(columns=["Date", "Name"] + subjects + ["Total", "Average", "Rank"])
 
 def append_rows_to_sheet(sheet, df_rows):
-    """Append rows (iterable of lists) to the sheet."""
     try:
         for row in df_rows:
             sheet.append_row(row)
@@ -70,7 +71,6 @@ def append_rows_to_sheet(sheet, df_rows):
     except Exception as e:
         st.warning("Failed writing to Google Sheet: " + str(e))
         return False
-
 # Try connect to Google Sheets at startup
 sheet = None
 import os
