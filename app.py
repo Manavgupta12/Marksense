@@ -23,7 +23,20 @@ def connect_sheets():
     """Return gspread sheet object or None if connection fails."""
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        creds = ServiceAccountCredentials.from_json_keyfile_name(SERVICE_ACCOUNT_FILE, scope)
+        
+        # Check if running on Streamlit Cloud (has secrets)
+        if hasattr(st, 'secrets') and 'gcp_service_account' in st.secrets:
+            # Use Streamlit Cloud secrets
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(
+                dict(st.secrets["gcp_service_account"]), scope
+            )
+        elif os.path.exists(SERVICE_ACCOUNT_FILE):
+            # Use local JSON file for development
+            creds = ServiceAccountCredentials.from_json_keyfile_name(SERVICE_ACCOUNT_FILE, scope)
+        else:
+            st.error("⚠️ Google Sheets credentials not found! Please set up secrets or add service_account.json")
+            return None
+        
         client = gspread.authorize(creds)
         sheet = client.open(GSHEET_NAME).sheet1
         return sheet
@@ -36,17 +49,17 @@ def read_history_from_sheet(sheet):
     try:
         data = sheet.get_all_records()
         if not data:
-            cols = ["Date", "Name"] + subjects
+            cols = ["Date", "Name"] + subjects + ["Total", "Average", "Rank"]
             return pd.DataFrame(columns=cols)
         df = pd.DataFrame(data)
         # Ensure expected columns exist
-        for c in ["Date", "Name"] + subjects:
+        for c in ["Date", "Name"] + subjects + ["Total", "Average", "Rank"]:
             if c not in df.columns:
                 df[c] = None
-        return df[["Date", "Name"] + subjects]
+        return df[["Date", "Name"] + subjects + ["Total", "Average", "Rank"]]
     except Exception as e:
         st.warning("Failed reading sheet: " + str(e))
-        return pd.DataFrame(columns=["Date", "Name"] + subjects)
+        return pd.DataFrame(columns=["Date", "Name"] + subjects + ["Total", "Average", "Rank"])
 
 def append_rows_to_sheet(sheet, df_rows):
     """Append rows (iterable of lists) to the sheet."""
@@ -96,7 +109,7 @@ if page == "Home":
     if sheet:
         history_df = read_history_from_sheet(sheet)
     else:
-        history_df = pd.DataFrame(columns=["Date", "Name"] + subjects)
+        history_df = pd.DataFrame(columns=["Date", "Name"] + subjects + ["Total", "Average", "Rank"])
 
     if not history_df.empty:
         # Ensure numeric subject columns exist and compute Total/Average safely
@@ -339,7 +352,7 @@ elif page == "Visualizer":
         if sheet:
             history_df = read_history_from_sheet(sheet)
         else:
-            history_df = pd.DataFrame(columns=["Date", "Name"] + subjects)
+            history_df = pd.DataFrame(columns=["Date", "Name"] + subjects + ["Total", "Average", "Rank"])
             
         if not history_df.empty:
             # compute totals if needed and ensure columns exist
@@ -424,12 +437,13 @@ elif page == "Visualizer":
         today = datetime.date.today().isoformat()
         df_copy = df.copy()
         df_copy.insert(0, "Date", today)
-        rows_to_append = df_copy[["Date", "Name"] + subjects].values.tolist()
+        # Include Total, Average, and Rank in the save
+        rows_to_append = df_copy[["Date", "Name"] + subjects + ["Total", "Average", "Rank"]].values.tolist()
 
         if sheet:
             wrote = append_rows_to_sheet(sheet, rows_to_append)
             if wrote:
-                st.success("Saved to Google Sheet ✅")
+                st.success("Saved to Google Sheet ✅ (including Total, Average, and Rank)")
             else:
                 st.error("Failed to save to Google Sheets")
         else:
@@ -453,7 +467,7 @@ elif page == "Progress":
     if sheet:
         history_df = read_history_from_sheet(sheet)
     else:
-        history_df = pd.DataFrame(columns=["Date", "Name"] + subjects)
+        history_df = pd.DataFrame(columns=["Date", "Name"] + subjects + ["Total", "Average", "Rank"])
 
     if history_df.empty:
         st.warning("No progress saved yet. Go to Visualizer and save today's results.")
