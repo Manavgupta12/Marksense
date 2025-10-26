@@ -1,9 +1,3 @@
-# Google Sheets credentials (IMPORTANT - Don't commit!)
-service_account.json
-```
-
-So your complete `.gitignore` should look like:
-```
 # Python cache
 __pycache__/
 *.py[cod]
