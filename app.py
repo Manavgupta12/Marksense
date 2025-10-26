@@ -2,10 +2,8 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import datetime
-
-# Google Sheets libs
 import gspread
-from google.oauth2.service_account import Credentials
+from oauth2client.service_account import ServiceAccountCredentials
 
 # ------------------------------
 # Config
@@ -16,39 +14,28 @@ GSHEET_NAME = "MarkSenseHistory"           # your sheet name
 SERVICE_ACCOUNT_FILE = "service_account.json"  # place this next to the app
 subjects = ["Maths", "Science", "English", "History", "Computer"]
 
-# ------------------------------
-# Helpers: Google Sheets connect + operations
-# ------------------------------
+# ----------------------------------
+# Connect to Google Sheets securely
+# ----------------------------------
 def connect_sheets():
     """Return gspread sheet object or None if connection fails."""
     try:
         scope = [
-            "https://www.googleapis.com/auth/spreadsheets",
-            "https://www.googleapis.com/auth/drive",
+            "https://spreadsheets.google.com/feeds",
+            "https://www.googleapis.com/auth/drive"
         ]
-
-        # Streamlit Cloud: load from secrets
-        if "gcp_service_account" in st.secrets:
-            creds_dict = st.secrets["gcp_service_account"]
-            creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
-
-        # Local dev: load from JSON
-        elif os.path.exists("service_account.json"):
-            creds = Credentials.from_service_account_file("service_account.json", scopes=scope)
-
-        else:
-            st.error("⚠️ Google Sheets credentials not found! Add JSON locally or use Streamlit secrets.")
-            return None
-
+        # Load credentials securely from Streamlit Secrets
+        service_account_info = st.secrets["google_service_account"]
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(service_account_info, scope)
         client = gspread.authorize(creds)
         sheet = client.open(GSHEET_NAME).sheet1
         return sheet
-
     except Exception as e:
-        st.warning(f"Google Sheets connection failed: {e}")
+        st.warning("Google Sheets connection failed. Reason: " + str(e))
         return None
 
 def read_history_from_sheet(sheet):
+    """Return a DataFrame read from the sheet, or an empty DataFrame."""
     try:
         data = sheet.get_all_records()
         if not data:
@@ -64,6 +51,7 @@ def read_history_from_sheet(sheet):
         return pd.DataFrame(columns=["Date", "Name"] + subjects + ["Total", "Average", "Rank"])
 
 def append_rows_to_sheet(sheet, df_rows):
+    """Append rows (iterable of lists) to the sheet."""
     try:
         for row in df_rows:
             sheet.append_row(row)
@@ -71,13 +59,9 @@ def append_rows_to_sheet(sheet, df_rows):
     except Exception as e:
         st.warning("Failed writing to Google Sheet: " + str(e))
         return False
-# Try connect to Google Sheets at startup
-sheet = None
-import os
-if os.path.exists(SERVICE_ACCOUNT_FILE):
-    sheet = connect_sheets()
-else:
-    st.warning(f"{SERVICE_ACCOUNT_FILE} not found. Place your service account JSON next to app.")
+
+# Connect once
+sheet = connect_sheets()
 
 # ------------------------------
 # Sidebar navigation + state
@@ -109,7 +93,7 @@ if page == "Home":
     if sheet:
         history_df = read_history_from_sheet(sheet)
     else:
-        history_df = pd.DataFrame(columns=["Date", "Name"] + subjects + ["Total", "Average", "Rank"])
+        history_df = pd.DataFrame(columns=["Date", "Name"] + subjects)
 
     if not history_df.empty:
         # Ensure numeric subject columns exist and compute Total/Average safely
@@ -352,7 +336,7 @@ elif page == "Visualizer":
         if sheet:
             history_df = read_history_from_sheet(sheet)
         else:
-            history_df = pd.DataFrame(columns=["Date", "Name"] + subjects + ["Total", "Average", "Rank"])
+            history_df = pd.DataFrame(columns=["Date", "Name"] + subjects)
             
         if not history_df.empty:
             # compute totals if needed and ensure columns exist
@@ -437,13 +421,12 @@ elif page == "Visualizer":
         today = datetime.date.today().isoformat()
         df_copy = df.copy()
         df_copy.insert(0, "Date", today)
-        # Include Total, Average, and Rank in the save
-        rows_to_append = df_copy[["Date", "Name"] + subjects + ["Total", "Average", "Rank"]].values.tolist()
+        rows_to_append = df_copy[["Date", "Name"] + subjects].values.tolist()
 
         if sheet:
             wrote = append_rows_to_sheet(sheet, rows_to_append)
             if wrote:
-                st.success("Saved to Google Sheet ✅ (including Total, Average, and Rank)")
+                st.success("Saved to Google Sheet ✅")
             else:
                 st.error("Failed to save to Google Sheets")
         else:
@@ -467,7 +450,7 @@ elif page == "Progress":
     if sheet:
         history_df = read_history_from_sheet(sheet)
     else:
-        history_df = pd.DataFrame(columns=["Date", "Name"] + subjects + ["Total", "Average", "Rank"])
+        history_df = pd.DataFrame(columns=["Date", "Name"] + subjects)
 
     if history_df.empty:
         st.warning("No progress saved yet. Go to Visualizer and save today's results.")
