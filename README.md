@@ -42,10 +42,10 @@ It helps track daily performance, visualize results, highlight toppers, and make
 
 ## 📸 Screenshots  
 
-### Interactive Home Dashboard  
+### Home Dashboard  
 <img src="Assets/Home.png" alt="Home Screenshot" width="500"/>
 
-### Visualizer with Charts 
+### Visualizer
 <img src="Assets/Visualiser.png" alt="Visualizer Screenshot" width="500"/>
 
 ### Progress Tracker  
