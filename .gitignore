@@ -1,27 +1,29 @@
+# Google Sheets credentials (IMPORTANT - Don't commit!)
+service_account.json
+```
+
+So your complete `.gitignore` should look like:
+```
 # Python cache
 __pycache__/
 *.py[cod]
 *$py.class
-
 # Virtual environments
 .env
 .venv
 env/
 venv/
 ENV/
-
 # Streamlit
 .streamlit/
-
 # Logs
 *.log
-
 # Jupyter
 .ipynb_checkpoints/
-
 # macOS
 .DS_Store
-
 # Editors
 .vscode/
 .idea/
+# Google Sheets credentials (IMPORTANT - Don't commit!)
+service_account.json
