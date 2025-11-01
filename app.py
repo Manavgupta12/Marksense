@@ -42,6 +42,8 @@ def read_history_from_sheet(sheet):
             cols = ["Date", "Name"] + subjects + ["Total", "Average", "Rank"]
             return pd.DataFrame(columns=cols)
         df = pd.DataFrame(data)
+        
+        # Ensure all required columns exist
         for c in ["Date", "Name"] + subjects + ["Total", "Average", "Rank"]:
             if c not in df.columns:
                 df[c] = None
@@ -87,10 +89,11 @@ def update_or_append_rows(sheet, new_data_df, date_to_update):
         # Build a dict of existing data by date and name
         existing_indices = {}
         for idx, row in enumerate(data_rows, start=2):  # start=2 because row 1 is header
-            row_date = row[0]
-            row_name = row[1]
-            if row_date == date_to_update:
-                existing_indices[(row_date, row_name)] = idx
+            if len(row) > 1:  # Ensure row has at least Date and Name
+                row_date = row[0]
+                row_name = row[1]
+                if row_date == date_to_update:
+                    existing_indices[(row_date, row_name)] = idx
         
         # Process new data
         rows_to_append = []
@@ -123,10 +126,20 @@ def update_or_append_rows(sheet, new_data_df, date_to_update):
 sheet = connect_sheets()
 
 # ------------------------------
-# Sidebar navigation + state
+# Session state initialization
 # ------------------------------
 if "page" not in st.session_state:
     st.session_state.page = "Home"
+if "student_data" not in st.session_state:
+    st.session_state.student_data = []
+if "max_marks" not in st.session_state:
+    st.session_state.max_marks = 100
+if "num_students" not in st.session_state:
+    st.session_state.num_students = 3
+
+# ------------------------------
+# Sidebar navigation + state
+# ------------------------------
 page = st.sidebar.radio("📍 Navigate", ["Home", "Visualizer", "Progress", "About"],
                         index=["Home", "Visualizer", "Progress", "About"].index(st.session_state.page))
 st.session_state.page = page
@@ -207,7 +220,7 @@ if page == "Home":
             with chart_col2:
                 st.write("**Options:**")
                 show_class_avg = st.checkbox("Show Class Average", value=True)
-                chart_style = st.radio("Chart Style:", ["Bar", "Line"], index=0)
+                chart_style = st.radio("Chart Style:", ["Bar", "Line"], index=0, key="home_chart_style")
             
             with chart_col1:
                 subject_means = latest_data[subjects].mean()
@@ -247,7 +260,7 @@ if page == "Home":
                 )
             
             with search_col2:
-                comparison_type = st.radio("Compare by:", ["Total Marks", "Subject-wise"])
+                comparison_type = st.radio("Compare by:", ["Total Marks", "Subject-wise"], key="home_comparison")
             
             if selected_students:
                 filtered_students = latest_data[latest_data['Name'].isin(selected_students)]
@@ -302,13 +315,14 @@ if page == "Home":
             
             with spotlight_col1:
                 spotlight_option = st.radio("Show:", 
-                                           ["Random Student", "Select Student", "Top Performer", "Needs Improvement"])
+                                           ["Random Student", "Select Student", "Top Performer", "Needs Improvement"],
+                                           key="spotlight_option")
             
             with spotlight_col2:
                 if spotlight_option == "Random Student":
                     spotlight_student = latest_data.sample(1).iloc[0]
                 elif spotlight_option == "Select Student":
-                    selected_name = st.selectbox("Choose student:", latest_data['Name'].unique())
+                    selected_name = st.selectbox("Choose student:", latest_data['Name'].unique(), key="spotlight_select")
                     spotlight_student = latest_data[latest_data['Name'] == selected_name].iloc[0]
                 elif spotlight_option == "Top Performer":
                     spotlight_student = latest_data.loc[latest_data['Total'].idxmax()]
@@ -348,16 +362,13 @@ elif page == "Visualizer":
     st.write("Analyze marks, edit or load saved data, then save to Google Sheets.")
 
     st.sidebar.header("⚙️ Settings")
-    if "max_marks" not in st.session_state:
-        st.session_state.max_marks = 100
+    
     max_marks = st.sidebar.number_input(
         "Maximum Marks per Subject", 10, 500, 
         value=st.session_state.max_marks, key="max_marks_input"
     )
     st.session_state.max_marks = max_marks
 
-    if "num_students" not in st.session_state:
-        st.session_state.num_students = 3
     n = st.sidebar.number_input(
         "Number of Students", 1, 100, 
         value=st.session_state.num_students, key="num_students_input"
@@ -372,13 +383,11 @@ elif page == "Visualizer":
         st.session_state.student_data = [{} for _ in range(st.session_state.num_students)]
         st.success("All student inputs cleared.")
 
-    if "student_data" not in st.session_state:
-        st.session_state.student_data = [{} for _ in range(n)]
-    else:
-        if len(st.session_state.student_data) < n:
-            st.session_state.student_data += [{} for _ in range(n - len(st.session_state.student_data))]
-        elif len(st.session_state.student_data) > n:
-            st.session_state.student_data = st.session_state.student_data[:n]
+    # Initialize student data
+    if len(st.session_state.student_data) < n:
+        st.session_state.student_data += [{} for _ in range(n - len(st.session_state.student_data))]
+    elif len(st.session_state.student_data) > n:
+        st.session_state.student_data = st.session_state.student_data[:n]
 
     st.header("Step 1: Load Last Saved Data (Optional)")
     if st.button("🕒 Load Last Saved Data"):
@@ -404,16 +413,33 @@ elif page == "Visualizer":
             latest_data = history_df[history_df["Date"] == latest_date]
 
             if not latest_data.empty:
-                st.session_state.student_data = latest_data[["Name"] + subjects].to_dict("records")
-
+                # Reset student data
+                st.session_state.student_data = []
+                
+                # Clear existing session state entries
                 for key in list(st.session_state.keys()):
                     if key.startswith("name_") or any(key.startswith(f"{sub}_") for sub in subjects):
                         st.session_state.pop(key, None)
 
-                for i, student in enumerate(st.session_state.student_data):
+                # Load new data
+                for i, (_, student) in enumerate(latest_data.iterrows()):
+                    if i >= n:  # Don't exceed current number of students
+                        break
+                    
+                    student_dict = {"Name": student["Name"]}
+                    for sub in subjects:
+                        student_dict[sub] = int(student[sub]) if pd.notna(student[sub]) else 0
+                    
+                    st.session_state.student_data.append(student_dict)
+                    
+                    # Set session state for inputs
                     st.session_state[f"name_{i}"] = student["Name"]
                     for sub in subjects:
-                        st.session_state[f"{sub}_{i}"] = int(student[sub])
+                        st.session_state[f"{sub}_{i}"] = int(student[sub]) if pd.notna(student[sub]) else 0
+
+                # Fill remaining slots if needed
+                while len(st.session_state.student_data) < n:
+                    st.session_state.student_data.append({})
 
                 st.success(f"✅ Loaded last saved data from {latest_date}")
                 st.rerun()
@@ -424,10 +450,12 @@ elif page == "Visualizer":
 
     student_data = []
     for i in range(n):
-        with st.expander(f"Student {i+1}"):
+        with st.expander(f"Student {i+1}", expanded=True):
+            # Initialize name
             name_key = f"name_{i}"
             if name_key not in st.session_state:
-                st.session_state[name_key] = st.session_state.student_data[i].get("Name", "") if i < len(st.session_state.student_data) else ""
+                st.session_state[name_key] = st.session_state.student_data[i].get("Name", f"Student {i+1}") if i < len(st.session_state.student_data) else f"Student {i+1}"
+            
             name = st.text_input("Name", value=st.session_state[name_key], key=f"name_input_{i}")
             st.session_state[name_key] = name
 
@@ -437,11 +465,16 @@ elif page == "Visualizer":
                 if mark_key not in st.session_state:
                     default_val = st.session_state.student_data[i].get(sub, int(max_marks/2)) if i < len(st.session_state.student_data) else int(max_marks/2)
                     st.session_state[mark_key] = default_val
+                
                 marks[sub] = st.number_input(f"{sub} marks", 0, max_marks, value=st.session_state[mark_key], key=f"{sub}_input_{i}")
                 st.session_state[mark_key] = marks[sub]
 
             student_data.append({"Name": name if name else f"Student {i+1}", **marks})
 
+    # Update session state with current data
+    st.session_state.student_data = student_data
+
+    # Create DataFrame
     df = pd.DataFrame(student_data)
     if not df.empty:
         df[subjects] = df[subjects].apply(pd.to_numeric, errors="coerce").fillna(0)
@@ -450,7 +483,7 @@ elif page == "Visualizer":
     df["Rank"] = df["Total"].rank(ascending=False, method="min").astype(int)
 
     st.header("Step 2: Results Table")
-    st.dataframe(df.style.background_gradient(cmap="Blues"))
+    st.dataframe(df.style.background_gradient(cmap="Blues", subset=subjects+["Total", "Average"]))
 
     if not df.empty:
         topper = df.loc[df["Total"].idxmax()]
@@ -458,46 +491,49 @@ elif page == "Visualizer":
         st.success(f"{topper['Name']} with {int(topper['Total'])} marks (Avg: {topper['Average']:.1f})")
 
     st.header("Step 3: Visualize Data")
-    chart_type = st.radio("Select chart type", ["Bar", "Line", "Radar"])
-    if chart_type == "Bar":
-        fig = px.bar(df, x="Name", y=subjects, barmode="group", template=PLOTLY_THEME, title="Marks Comparison")
-    elif chart_type == "Line":
-        fig = px.line(df, x="Name", y=subjects, markers=True, template=PLOTLY_THEME, title="Trend Across Subjects")
+    chart_type = st.radio("Select chart type", ["Bar", "Line", "Radar"], key="viz_chart_type")
+    
+    if not df.empty:
+        if chart_type == "Bar":
+            fig = px.bar(df, x="Name", y=subjects, barmode="group", template=PLOTLY_THEME, title="Marks Comparison")
+        elif chart_type == "Line":
+            fig = px.line(df, x="Name", y=subjects, markers=True, template=PLOTLY_THEME, title="Trend Across Subjects")
+        else:
+            melted = df.melt(id_vars=["Name"], value_vars=subjects, var_name="Subject", value_name="Marks")
+            fig = px.line_polar(melted, r="Marks", theta="Subject", color="Name", line_close=True, 
+                              template=PLOTLY_THEME, title="Radar Chart")
+        st.plotly_chart(fig, use_container_width=True)
     else:
-        melted = df.melt(id_vars=["Name"], value_vars=subjects, var_name="Subject", value_name="Marks")
-        fig = px.line_polar(melted, r="Marks", theta="Subject", color="Name", line_close=True, template=PLOTLY_THEME, title="Radar Chart")
-    st.plotly_chart(fig, use_container_width=True)
+        st.info("Enter student data to see visualizations")
 
     st.header("Step 4: Insights")
-    weak_subjects = {sub: df[sub].mean() for sub in subjects if df[sub].mean() < max_marks * 0.5} if not df.empty else {}
-    if weak_subjects:
-        for sub, avg in weak_subjects.items():
-            st.warning(f"{sub} is weak on average: {avg:.1f}")
+    if not df.empty:
+        weak_subjects = {sub: df[sub].mean() for sub in subjects if df[sub].mean() < max_marks * 0.5}
+        if weak_subjects:
+            for sub, avg in weak_subjects.items():
+                st.warning(f"{sub} is weak on average: {avg:.1f}")
+        else:
+            st.success("No weak subjects detected (averages >= 50%)")
     else:
-        st.success("No weak subjects detected (averages >= 50%)" if not df.empty else "Enter data to see insights.")
+        st.info("Enter data to see insights.")
 
-    if st.button("💾 Save Today's Results"):
+    st.header("Step 5: Save Data")
+    if st.button("💾 Save Today's Results", type="primary"):
         today = datetime.date.today().isoformat()
         df_copy = df.copy()
         df_copy.insert(0, "Date", today)
 
         if sheet:
-            wrote = update_or_append_rows(sheet, df_copy[["Date", "Name"] + subjects + ["Total", "Average", "Rank"]], today)
-            if wrote:
+            success = update_or_append_rows(sheet, df_copy[["Date", "Name"] + subjects + ["Total", "Average", "Rank"]], today)
+            if success:
                 st.success("✅ Saved/Updated to Google Sheet (with Total, Average, Rank)")
             else:
                 st.error("Failed to save to Google Sheets")
         else:
             st.error("Google Sheets not connected. Cannot save data.")
 
-        for i in range(n):
-            st.session_state.pop(f"name_{i}", None)
-            for sub in subjects:
-                st.session_state.pop(f"{sub}_{i}", None)
-        
-        st.rerun()
-
-    st.download_button("📥 Download Results as CSV", df.to_csv(index=False), "student_results.csv", "text/csv")
+    if not df.empty:
+        st.download_button("📥 Download Results as CSV", df.to_csv(index=False), "student_results.csv", "text/csv")
 
 # ------------------------------
 # Progress page - FIXED
@@ -528,26 +564,34 @@ elif page == "Progress":
         st.write("### Saved Progress History")
         st.dataframe(history_df, use_container_width=True)
 
-        # Group by date for trend analysis
-        avg_progress = history_df.groupby("Date", as_index=False)["Average"].mean()
-        fig_avg = px.line(avg_progress, x="Date", y="Average", markers=True, 
-                         title="Average Performance Over Time", template=PLOTLY_THEME)
-        st.plotly_chart(fig_avg, use_container_width=True)
+        # Ensure we have valid data for plotting
+        if not history_df.empty and 'Date' in history_df.columns and 'Average' in history_df.columns:
+            # Group by date for trend analysis
+            avg_progress = history_df.groupby("Date", as_index=False)["Average"].mean()
+            if not avg_progress.empty:
+                fig_avg = px.line(avg_progress, x="Date", y="Average", markers=True, 
+                                 title="Average Performance Over Time", template=PLOTLY_THEME)
+                st.plotly_chart(fig_avg, use_container_width=True)
 
-        topper_progress = history_df.groupby("Date", as_index=False)["Total"].max()
-        fig_topper = px.line(topper_progress, x="Date", y="Total", markers=True, 
-                            title="Topper's Total Over Time", template=PLOTLY_THEME)
-        st.plotly_chart(fig_topper, use_container_width=True)
+            if 'Total' in history_df.columns:
+                topper_progress = history_df.groupby("Date", as_index=False)["Total"].max()
+                if not topper_progress.empty:
+                    fig_topper = px.line(topper_progress, x="Date", y="Total", markers=True, 
+                                        title="Topper's Total Over Time", template=PLOTLY_THEME)
+                    st.plotly_chart(fig_topper, use_container_width=True)
 
         st.subheader("📌 Track Individual Student")
-        student_choice = st.selectbox("Select Student", history_df["Name"].unique())
-        student_hist = history_df[history_df["Name"] == student_choice]
-        if not student_hist.empty:
-            fig_student = px.line(student_hist, x="Date", y="Total", markers=True, 
-                                 title=f"{student_choice}'s Total Marks Over Time", template=PLOTLY_THEME)
-            st.plotly_chart(fig_student, use_container_width=True)
+        if 'Name' in history_df.columns:
+            student_choice = st.selectbox("Select Student", history_df["Name"].unique())
+            student_hist = history_df[history_df["Name"] == student_choice]
+            if not student_hist.empty and 'Date' in student_hist.columns and 'Total' in student_hist.columns:
+                fig_student = px.line(student_hist, x="Date", y="Total", markers=True, 
+                                     title=f"{student_choice}'s Total Marks Over Time", template=PLOTLY_THEME)
+                st.plotly_chart(fig_student, use_container_width=True)
+            else:
+                st.info("No complete data for this student yet.")
         else:
-            st.info("No data for this student yet.")
+            st.info("No student data available")
 
 # ------------------------------
 # About page
