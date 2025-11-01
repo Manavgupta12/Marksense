@@ -45,6 +45,14 @@ def read_history_from_sheet(sheet):
         for c in ["Date", "Name"] + subjects + ["Total", "Average", "Rank"]:
             if c not in df.columns:
                 df[c] = None
+        
+        # Convert numeric columns, replacing empty strings with NaN first
+        for col in subjects + ["Total", "Average", "Rank"]:
+            if col in df.columns:
+                # Replace empty strings with NaN
+                df[col] = df[col].replace('', None)
+                df[col] = pd.to_numeric(df[col], errors="coerce")
+        
         return df[["Date", "Name"] + subjects + ["Total", "Average", "Rank"]]
     except Exception as e:
         st.warning("Failed reading sheet: " + str(e))
@@ -150,9 +158,13 @@ if page == "Home":
             if sub not in history_df.columns:
                 history_df[sub] = 0
         
-        # Convert all numeric columns properly
+        # Convert all numeric columns properly - but preserve existing values
         for col in subjects + ["Total", "Average", "Rank"]:
-            history_df[col] = pd.to_numeric(history_df[col], errors="coerce").fillna(0)
+            if col in history_df.columns:
+                history_df[col] = pd.to_numeric(history_df[col], errors="coerce")
+        
+        # Only fill NaN, don't replace all zeros
+        history_df = history_df.fillna(0)
 
         st.markdown("---")
         st.subheader("📅 Select Date to View")
@@ -380,8 +392,13 @@ elif page == "Visualizer":
                 if sub not in history_df.columns:
                     history_df[sub] = 0
             
+            # Convert ALL numeric columns properly - preserve existing values
             for col in subjects + ["Total", "Average", "Rank"]:
-                history_df[col] = pd.to_numeric(history_df[col], errors="coerce").fillna(0)
+                if col in history_df.columns:
+                    history_df[col] = pd.to_numeric(history_df[col], errors="coerce")
+            
+            # Fill NaN only
+            history_df = history_df.fillna(0)
 
             latest_date = history_df["Date"].max()
             latest_data = history_df[history_df["Date"] == latest_date]
@@ -500,9 +517,13 @@ elif page == "Progress":
             if sub not in history_df.columns:
                 history_df[sub] = 0
         
-        # Convert ALL numeric columns properly
+        # Convert ALL numeric columns properly - preserve values
         for col in subjects + ["Total", "Average", "Rank"]:
-            history_df[col] = pd.to_numeric(history_df[col], errors="coerce").fillna(0)
+            if col in history_df.columns:
+                history_df[col] = pd.to_numeric(history_df[col], errors="coerce")
+        
+        # Fill NaN only
+        history_df = history_df.fillna(0)
 
         st.write("### Saved Progress History")
         st.dataframe(history_df, use_container_width=True)
