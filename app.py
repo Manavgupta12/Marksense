@@ -447,22 +447,25 @@ elif page == "Visualizer":
         today = datetime.date.today().isoformat()
         df_copy = df.copy()
         df_copy.insert(0, "Date", today)
-        rows_to_append = df_copy[["Date", "Name"] + subjects].values.tolist()
-
+        # ✅ Include Total, Average, and Rank
+        rows_to_append = df_copy[["Date", "Name"] + subjects + ["Total", "Average", "Rank"]].values.tolist()
+    
         if sheet:
             wrote = append_rows_to_sheet(sheet, rows_to_append)
             if wrote:
-                st.success("Saved to Google Sheet ✅")
+                st.success("✅ Saved to Google Sheet (with Total, Average, Rank)")
             else:
                 st.error("Failed to save to Google Sheets")
         else:
             st.error("Google Sheets not connected. Cannot save data.")
-
+    
         # Clear session_state after saving
         for i in range(n):
             st.session_state.pop(f"name_{i}", None)
             for sub in subjects:
                 st.session_state.pop(f"{sub}_{i}", None)
+    
+        st.rerun()  # ✅ Refresh the page after saving
 
     # download current results as CSV
     st.download_button("📥 Download Results as CSV", df.to_csv(index=False), "student_results.csv", "text/csv")
