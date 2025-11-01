@@ -496,11 +496,15 @@ elif page == "Progress":
         st.write("### Saved Progress History")
         st.dataframe(history_df)
 
-        avg_progress = history_df.groupby("Date")["Average"].mean().reset_index()
+        history_df["Average"] = pd.to_numeric(history_df["Average"], errors="coerce")
+        avg_progress = history_df.groupby("Date", as_index=False)["Average"].mean()
+
         fig_avg = px.line(avg_progress, x="Date", y="Average", markers=True, title="Average Performance Over Time", template=PLOTLY_THEME)
         st.plotly_chart(fig_avg, use_container_width=True)
 
-        topper_progress = history_df.groupby("Date")["Total"].max().reset_index()
+        history_df["Total"] = pd.to_numeric(history_df["Total"], errors="coerce")
+        topper_progress = history_df.groupby("Date", as_index=False)["Total"].max()
+
         fig_topper = px.line(topper_progress, x="Date", y="Total", markers=True, title="Topper's Total Over Time", template=PLOTLY_THEME)
         st.plotly_chart(fig_topper, use_container_width=True)
 
