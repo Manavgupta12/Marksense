@@ -305,12 +305,18 @@ elif page == "Visualizer":
     st.sidebar.header("⚙️ Settings")
     if "max_marks" not in st.session_state:
         st.session_state.max_marks = 100
-    max_marks = st.sidebar.number_input("Maximum Marks per Subject", 10, 500, value=st.session_state.max_marks, key="max_marks_input")
+    max_marks = st.sidebar.number_input(
+        "Maximum Marks per Subject", 10, 500, 
+        value=st.session_state.max_marks, key="max_marks_input"
+    )
     st.session_state.max_marks = max_marks
 
     if "num_students" not in st.session_state:
         st.session_state.num_students = 3
-    n = st.sidebar.number_input("Number of Students", 1, 100, value=st.session_state.num_students, key="num_students_input")
+    n = st.sidebar.number_input(
+        "Number of Students", 1, 100, 
+        value=st.session_state.num_students, key="num_students_input"
+    )
     st.session_state.num_students = n
 
     # Clear inputs
@@ -322,7 +328,7 @@ elif page == "Visualizer":
         st.session_state.student_data = [{} for _ in range(st.session_state.num_students)]
         st.success("All student inputs cleared.")
 
-    # ensure student_data list matches n
+    # Ensure student_data matches number of students
     if "student_data" not in st.session_state:
         st.session_state.student_data = [{} for _ in range(n)]
     else:
@@ -331,51 +337,51 @@ elif page == "Visualizer":
         elif len(st.session_state.student_data) > n:
             st.session_state.student_data = st.session_state.student_data[:n]
 
+    # ✅ Load Last Saved Data button (fixed placement)
     st.header("Step 1: Load Last Saved Data (Optional)")
-if st.button("🕒 Load Last Saved Data"):
-    if sheet:
-        history_df = read_history_from_sheet(sheet)
-    else:
-        history_df = pd.DataFrame(columns=["Date", "Name"] + subjects + ["Total", "Average", "Rank"])
-        
-    if not history_df.empty:
-        # Ensure numeric and compute totals if missing
-        for sub in subjects:
-            if sub not in history_df.columns:
-                history_df[sub] = 0
-        history_df[subjects] = history_df[subjects].apply(pd.to_numeric, errors="coerce").fillna(0)
-
-        # Compute Total/Average/Rank if not present
-        if "Total" not in history_df.columns:
-            history_df["Total"] = history_df[subjects].sum(axis=1)
-        if "Average" not in history_df.columns:
-            history_df["Average"] = history_df[subjects].mean(axis=1)
-        if "Rank" not in history_df.columns:
-            history_df["Rank"] = history_df["Total"].rank(ascending=False, method="min").astype(int)
-
-        # Get latest date's data
-        latest_date = history_df["Date"].max()
-        latest_data = history_df[history_df["Date"] == latest_date]
-
-        if not latest_data.empty:
-            st.session_state.student_data = latest_data[["Name"] + subjects].to_dict("records")
-
-            # Clear any old keys before reloading
-            for key in list(st.session_state.keys()):
-                if key.startswith("name_") or any(key.startswith(f"{sub}_") for sub in subjects):
-                    st.session_state.pop(key, None)
-
-            # Refill new data
-            for i, student in enumerate(st.session_state.student_data):
-                st.session_state[f"name_{i}"] = student["Name"]
-                for sub in subjects:
-                    st.session_state[f"{sub}_{i}"] = student[sub]
-
-            st.success(f"✅ Loaded last saved data from {latest_date}")
+    if st.button("🕒 Load Last Saved Data"):
+        if sheet:
+            history_df = read_history_from_sheet(sheet)
         else:
-            st.warning("No rows found for latest date.")
-    else:
-        st.warning("No saved data available.")
+            history_df = pd.DataFrame(columns=["Date", "Name"] + subjects + ["Total", "Average", "Rank"])
+            
+        if not history_df.empty:
+            for sub in subjects:
+                if sub not in history_df.columns:
+                    history_df[sub] = 0
+            history_df[subjects] = history_df[subjects].apply(pd.to_numeric, errors="coerce").fillna(0)
+
+            # Compute Total/Average/Rank if not present
+            if "Total" not in history_df.columns:
+                history_df["Total"] = history_df[subjects].sum(axis=1)
+            if "Average" not in history_df.columns:
+                history_df["Average"] = history_df[subjects].mean(axis=1)
+            if "Rank" not in history_df.columns:
+                history_df["Rank"] = history_df["Total"].rank(ascending=False, method="min").astype(int)
+
+            # Get latest date's data
+            latest_date = history_df["Date"].max()
+            latest_data = history_df[history_df["Date"] == latest_date]
+
+            if not latest_data.empty:
+                st.session_state.student_data = latest_data[["Name"] + subjects].to_dict("records")
+
+                # Clear any old keys
+                for key in list(st.session_state.keys()):
+                    if key.startswith("name_") or any(key.startswith(f"{sub}_") for sub in subjects):
+                        st.session_state.pop(key, None)
+
+                # Refill session state
+                for i, student in enumerate(st.session_state.student_data):
+                    st.session_state[f"name_{i}"] = student["Name"]
+                    for sub in subjects:
+                        st.session_state[f"{sub}_{i}"] = student[sub]
+
+                st.success(f"✅ Loaded last saved data from {latest_date}")
+            else:
+                st.warning("No rows found for latest date.")
+        else:
+            st.warning("No saved data available.")
 
     # Manual inputs (persistent)
     student_data = []
